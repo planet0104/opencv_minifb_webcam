@@ -3,24 +3,27 @@ use minifb::{Window, WindowOptions, Key, ScaleMode};
 use nokhwa::{utils::{CameraIndex, RequestedFormat, RequestedFormatType}, pixel_format::RgbFormat, Camera};
 use opencv::{prelude::*, imgcodecs::imwrite, core::{Vector, CV_8UC3}};
 
-const WIDTH: usize = 1280;
-const HEIGHT: usize = 720;
-
 fn main() -> Result<()>{
-    let index = CameraIndex::Index(0); 
+    let index = CameraIndex::Index(1); 
     let requested = RequestedFormat::new::<RgbFormat>(RequestedFormatType::AbsoluteHighestFrameRate);
     
     let mut camera = Camera::new(index, requested)?;
 
-    let mut buffer: Vec<u32> = vec![0; WIDTH * HEIGHT];
+    let frame = camera.frame()?;
+    let decoded_frame = frame.decode_image::<RgbFormat>()?;
+
+    let width = decoded_frame.width();
+    let height = decoded_frame.height();
+
+    let mut buffer: Vec<u32> = vec![0; (width * height) as usize];
 
     let mut window = Window::new(
         "webcam",
-        WIDTH,
-        HEIGHT,
+        640,
+        480,
         WindowOptions {
             resize: true,
-            scale_mode: ScaleMode::Center,
+            scale_mode: ScaleMode::AspectRatioStretch,
             // borderless: true,
             // transparency: false,
             // title: false,
@@ -48,7 +51,7 @@ fn main() -> Result<()>{
 
         decoded = Some(decoded_frame);
         
-        window.update_with_buffer(&buffer, WIDTH, HEIGHT)?;
+        window.update_with_buffer(&buffer, width as usize, height as usize)?;
     }
 
     if let Some(decoded) = decoded{
