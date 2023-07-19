@@ -1,29 +1,27 @@
+use std::num::NonZeroU32;
 use anyhow::Result;
 use minifb::{Window, WindowOptions, Key, ScaleMode};
 use nokhwa::{utils::{CameraIndex, RequestedFormat, RequestedFormatType}, pixel_format::RgbFormat, Camera};
 use opencv::{prelude::*, imgcodecs::imwrite, core::{Vector, CV_8UC3}};
 
+const WIDTH: usize = 640;
+const HEIGHT: usize = 360;
+
 fn main() -> Result<()>{
-    let index = CameraIndex::Index(1); 
+    let index = CameraIndex::Index(0); 
     let requested = RequestedFormat::new::<RgbFormat>(RequestedFormatType::AbsoluteHighestFrameRate);
     
     let mut camera = Camera::new(index, requested)?;
 
-    let frame = camera.frame()?;
-    let decoded_frame = frame.decode_image::<RgbFormat>()?;
-
-    let width = decoded_frame.width();
-    let height = decoded_frame.height();
-
-    let mut buffer: Vec<u32> = vec![0; (width * height) as usize];
+    let mut buffer: Vec<u32> = vec![0; WIDTH * HEIGHT];
 
     let mut window = Window::new(
         "webcam",
-        640,
-        480,
+        WIDTH,
+        HEIGHT,
         WindowOptions {
             resize: true,
-            scale_mode: ScaleMode::AspectRatioStretch,
+            scale_mode: ScaleMode::Stretch,
             // borderless: true,
             // transparency: false,
             // title: false,
@@ -43,15 +41,47 @@ fn main() -> Result<()>{
         // let t = Instant::now();
         let frame = camera.frame()?;
         // decode into an ImageBuffer
-        let decoded_frame = frame.decode_image::<RgbFormat>()?;
+        let mut decoded_frame = frame.decode_image::<RgbFormat>()?;
+
+        // let t = Instant::now();
+
+        let width = NonZeroU32::new(decoded_frame.width()).unwrap();
+        let height = NonZeroU32::new(decoded_frame.height()).unwrap();
+        let src_image = fast_image_resize::Image::from_slice_u8(
+            width,
+            height,
+            &mut decoded_frame,
+            fast_image_resize::PixelType::U8x3,
+        )?;
+
+        // Create container for data of destination image
+        let dst_width = NonZeroU32::new(WIDTH as u32).unwrap();
+        let dst_height = NonZeroU32::new(HEIGHT as u32).unwrap();
+        let mut dst_image = fast_image_resize::Image::new(
+            dst_width,
+            dst_height,
+            src_image.pixel_type(),
+        );
+
+        // Get mutable view of destination image data
+        let mut dst_view = dst_image.view_mut();
+
+        // Create Resizer instance and resize source image
+        // into buffer of destination image
+        let mut resizer = fast_image_resize::Resizer::new(
+            fast_image_resize::ResizeAlg::Convolution(fast_image_resize::FilterType::Bilinear),
+        );
+        resizer.resize(&src_image.view(), &mut dst_view)?;
         
-        for (pixel, target) in decoded_frame.pixels().zip(buffer.iter_mut()){
+        for (pixel, target) in dst_image.buffer().chunks(3).zip(buffer.iter_mut()){
             *target = u32::from_be_bytes([0, pixel[0], pixel[1], pixel[2]]);
         }
+        
+        // println!("耗时:{}ms", t.elapsed().as_millis());
 
         decoded = Some(decoded_frame);
         
-        window.update_with_buffer(&buffer, width as usize, height as usize)?;
+        window.update_with_buffer(&buffer, WIDTH, HEIGHT)?;
     }
 
     if let Some(decoded) = decoded{

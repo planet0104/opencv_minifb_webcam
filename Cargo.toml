@@ -9,6 +9,7 @@ edition = "2021"
 opencv = "0.83.0"
 anyhow = "1"
 minifb = "0.24"
+fast_image_resize = "2.7.3"
 
 [dependencies.nokhwa]
 version = "0.10.4"
